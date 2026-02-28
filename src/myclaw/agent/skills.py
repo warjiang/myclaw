@@ -1,12 +1,9 @@
-import logging
 import os
 from pathlib import Path
 
 import yaml
+from loguru import logger
 from pydantic import BaseModel
-
-
-logger = logging.getLogger(__name__)
 
 
 class Skill(BaseModel):
@@ -32,14 +29,28 @@ class SkillManager:
 
   def load_skills(self) -> None:
     """Load all skills from configured directories."""
+    logger.info("Loading skills from directories: {}", [str(d) for d in self.skill_dirs])
+
     for directory in self.skill_dirs:
       if not directory.exists():
+        logger.debug("Skill directory does not exist: {}", directory)
         continue
+
+      logger.info("Scanning skill directory: {}", directory)
+      skill_count = 0
 
       for root, _, files in os.walk(directory):
         if "SKILL.md" in files:
           skill_path = Path(root) / "SKILL.md"
           self._load_skill(skill_path)
+          skill_count += 1
+
+      if skill_count > 0:
+        logger.info("Loaded {} skill(s) from {}", skill_count, directory)
+      else:
+        logger.debug("No skills found in {}", directory)
+
+    logger.info("Total skills loaded: {}", len(self.skills))
 
   def _load_skill(self, path: Path) -> None:
     """Load a single skill file.
@@ -64,8 +75,9 @@ class SkillManager:
             metadata=frontmatter,
           )
           self.skills[skill.name] = skill
+          logger.info("Loaded skill: {} from {}", skill.name, path)
     except Exception:
-      logger.exception("Error loading skill from %s", path)
+      logger.exception("Error loading skill from {}", path)
 
   def get_system_prompt_addition(self) -> str:
     """Generate a system prompt addition containing all skills."""

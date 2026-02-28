@@ -1,0 +1,53 @@
+{
+  "providers": {},
+  "claudecode": {
+    "base_url": "",
+    "auth_token": "",
+    "model": "deepseek-v3.2",
+    "haiku_model": "deepseek-v3.2",
+    "sonnet_model": "deepseek-v3.2",
+    "opus_model": "deepseek-v3.2"
+  },
+  "gateway": {
+    "host": "127.0.0.1",
+    "port": 18790,
+    "heartbeat": {
+      "enabled": true,
+      "interval_s": 1800
+    }
+  },
+  "channels": {
+    "whatsapp": {
+      "enabled": false
+    },
+    "telegram": {
+      "enabled": false
+    },
+    "discord": {
+      "enabled": false
+    },
+    "feishu": {
+      "enabled": true,
+      "app_id": "",
+      "app_secret": ""
+    },
+    "mochat": {
+      "enabled": false
+    },
+    "dingtalk": {
+      "enabled": false
+    },
+    "email": {
+      "enabled": false
+    },
+    "slack": {
+      "enabled": false
+    },
+    "qq": {
+      "enabled": false
+    },
+    "matrix": {
+      "enabled": false
+    }
+  }
+}

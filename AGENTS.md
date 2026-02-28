@@ -95,6 +95,20 @@ def function_name(param1: str, param2: int) -> bool:
    - Use lazy imports inside functions where the library is actually used
    - This significantly improves startup time for CLI applications
 
+5. **Logging**: Use `loguru` for logging throughout the project:
+   - Import: `from loguru import logger`
+   - Use appropriate log levels:
+     - `logger.debug()`: Detailed debugging information, development only
+     - `logger.info()`: General information, important lifecycle events
+     - `logger.warning()`: Warning messages, recoverable issues
+     - `logger.error()`: Error messages, operation failures
+     - `logger.exception()`: Exception details (includes traceback)
+   - Log message format: Use `{}` placeholder style (loguru's native format):
+     ```python
+     logger.info("Processing file: {}", file_path)
+     logger.debug("Received data: {}", data[:100] + "..." if len(data) > 100 else data)
+     ```
+
 ## Core Agent
 
 ### ClawAgent

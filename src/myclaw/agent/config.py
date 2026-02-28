@@ -1,17 +1,17 @@
-import logging
 from pathlib import Path
 
 import yaml
+from loguru import logger
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 LOG_LEVELS = {
-  "DEBUG": logging.DEBUG,
-  "INFO": logging.INFO,
-  "WARNING": logging.WARNING,
-  "ERROR": logging.ERROR,
-  "CRITICAL": logging.CRITICAL,
+  "DEBUG": "DEBUG",
+  "INFO": "INFO",
+  "WARNING": "WARNING",
+  "ERROR": "ERROR",
+  "CRITICAL": "CRITICAL",
 }
 
 
@@ -41,6 +41,7 @@ class ToolsConfig(BaseModel):
 class FeishuConfig(BaseModel):
   """Feishu channel configuration."""
 
+  enabled: bool = False
   app_id: str = ""
   app_secret: str = ""
   verification_token: str = ""
@@ -53,10 +54,25 @@ class FeishuConfig(BaseModel):
 
   @classmethod
   @field_validator("log_level", mode="before")
-  def parse_log_level(cls, v: str | int) -> int:
+  def parse_log_level(cls, v: str | int) -> str:
     if isinstance(v, int):
-      return v
-    return LOG_LEVELS.get(v.upper(), logging.INFO)
+      return "INFO"
+    return LOG_LEVELS.get(v.upper(), "INFO")
+
+
+class CLIConfig(BaseModel):
+  """CLI channel configuration."""
+
+  enabled: bool = False
+
+
+class ChannelsConfig(BaseModel):
+  """Configuration for chat channels."""
+
+  send_progress: bool = True
+  send_tool_hints: bool = False
+  feishu: FeishuConfig = Field(default_factory=FeishuConfig)
+  cli: CLIConfig = Field(default_factory=CLIConfig)
 
 
 class Config(BaseSettings):
@@ -64,15 +80,15 @@ class Config(BaseSettings):
 
   provider: ProviderConfig = Field(default_factory=ProviderConfig)
   tools: ToolsConfig = Field(default_factory=ToolsConfig)
-  feishu: FeishuConfig = Field(default_factory=FeishuConfig)
+  channels: ChannelsConfig = Field(default_factory=ChannelsConfig)
   log_level: str = "INFO"
 
   @classmethod
   @field_validator("log_level", mode="before")
-  def parse_log_level(cls, v: str | int) -> int:
+  def parse_log_level(cls, v: str | int) -> str:
     if isinstance(v, int):
-      return v
-    return LOG_LEVELS.get(v.upper(), logging.INFO)
+      return "INFO"
+    return LOG_LEVELS.get(v.upper(), "INFO")
 
   model_config = SettingsConfigDict(env_prefix="MYCLAW_", env_nested_delimiter="__")
 
