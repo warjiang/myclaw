@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 
 
 class BaseChannel(ABC):
@@ -13,3 +13,7 @@ class BaseChannel(ABC):
   @abstractmethod
   async def send(self, message: str, end: str = "\n"):
     """Send a message to the user."""
+
+  @abstractmethod
+  async def send_stream(self, stream: AsyncIterator[str]):
+    """Send a stream of messages to the user."""

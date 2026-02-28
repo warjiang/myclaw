@@ -2,7 +2,8 @@ import asyncio
 import contextvars
 import json
 import logging
-from collections.abc import Awaitable, Callable
+import time
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -38,6 +39,9 @@ class BaseFeishuChannel:
     raise NotImplementedError
 
   async def send(self, message: str, end: str = "\n"):
+    raise NotImplementedError
+
+  async def send_stream(self, stream: AsyncIterator[str]):
     raise NotImplementedError
 
 
@@ -105,6 +109,9 @@ class WebSocketFeishuChannel(BaseFeishuChannel):
 
   async def send(self, message: str, end: str = "\n"):
     logger.info(f"WebSocket mode: message would be sent here: {message[:50]}...")
+
+  async def send_stream(self, stream: AsyncIterator[str]):
+    logger.info("WebSocket mode: stream would be handled here")
 
 
 class FeishuError(Exception):
@@ -215,6 +222,9 @@ class HttpFeishuChannel(BaseFeishuChannel):
   async def send(self, message: str, end: str = "\n"):
     logger.info(f"HTTP mode: message would be sent here: {message[:50]}...")
 
+  async def send_stream(self, stream: AsyncIterator[str]):
+    logger.info("HTTP mode: stream would be handled here")
+
 
 class FeishuChannel(BaseFeishuChannel):
   def __init__(
@@ -296,6 +306,61 @@ class FeishuChannel(BaseFeishuChannel):
     else:
       logger.warning("No sender_id available, cannot send message")
 
+  def _build_markdown_card(self, text: str) -> str:
+    card = {"elements": [{"tag": "markdown", "content": text}]}
+    return json.dumps(card)
+
+  async def send_stream(self, stream: AsyncIterator[str]):
+    sender_id = _current_sender_id_var.get() or self._current_sender_id
+    if not self._feishu_client or not sender_id:
+      logger.warning("Feishu client or sender_id not available, cannot stream message")
+      return
+
+    full_message = ""
+    message_id = None
+    last_update_time = time.time()
+    update_interval = 0.5  # seconds
+
+    try:
+      async for chunk in stream:
+        full_message += chunk
+        current_time = time.time()
+
+        # Debounce the updates
+        if current_time - last_update_time >= update_interval:
+          card_content = self._build_markdown_card(full_message + "▌")
+          if message_id is None:
+            # First send
+            resp = self._feishu_client.send_message_with_card(
+              receive_id=sender_id,
+              card_content=card_content,
+            )
+            message_id = resp.get("message_id")
+          else:
+            # Patch existing message
+            self._feishu_client.patch_message_with_card(
+              message_id=message_id,
+              card_content=card_content,
+            )
+          last_update_time = current_time
+
+      # Final update without the cursor
+      if full_message:
+        card_content = self._build_markdown_card(full_message)
+        if message_id is None:
+          self._feishu_client.send_message_with_card(
+            receive_id=sender_id,
+            card_content=card_content,
+          )
+        else:
+          self._feishu_client.patch_message_with_card(
+            message_id=message_id,
+            card_content=card_content,
+          )
+
+    except Exception:
+      logger.exception("Error during stream sending")
+
 
 class FeishuClient:
   def __init__(self, app_id: str, app_secret: str):
@@ -363,6 +428,24 @@ class FeishuClient:
     if resp.code == 0:
       return {"message_id": resp.data.message_id}
     msg = f"Failed to send card message: {resp.msg}"
+    raise FeishuError(msg)
+
+  def patch_message_with_card(
+    self,
+    message_id: str,
+    card_content: str,
+  ) -> dict:
+    client = self._get_client()
+    request = (
+      lark.im.v1.PatchMessageRequest.builder()
+      .message_id(message_id)
+      .request_body(lark.im.v1.PatchMessageRequestBody.builder().content(card_content).build())
+      .build()
+    )
+    resp = client.im.v1.message.patch(request)
+    if resp.code == 0:
+      return {}
+    msg = f"Failed to patch message: {resp.msg}"
     raise FeishuError(msg)
 
 

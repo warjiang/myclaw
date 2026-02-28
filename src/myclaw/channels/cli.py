@@ -1,3 +1,5 @@
+from collections.abc import AsyncIterator
+
 from rich.console import Console
 from rich.prompt import Prompt
 
@@ -31,3 +33,10 @@ class CLIChannel(BaseChannel):
   async def send(self, message: str, end: str = "\n"):
     """Display message to user."""
     console.print(f"{message}", end=end)
+
+  async def send_stream(self, stream: AsyncIterator[str]):
+    """Stream message to user."""
+    console.print("[bold purple]Claw:[/bold purple] ", end="")
+    async for chunk in stream:
+      console.print(chunk, end="")
+    console.print()

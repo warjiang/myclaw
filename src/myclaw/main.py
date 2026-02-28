@@ -30,21 +30,7 @@ async def async_main():
     await agent.initialize()
 
     async def handle_message(msg_info: MessageInfo):
-      is_cli = isinstance(channel, CLIChannel)
-      if is_cli:
-        console.print("[bold purple]Claw:[/bold purple] ", end="")
-
-      full_response = ""
-      async for chunk in agent.process_message(msg_info.text):
-        if is_cli:
-          console.print(chunk, end="")
-        else:
-          full_response += chunk
-
-      if is_cli:
-        console.print()
-      elif full_response:
-        await channel.send(full_response, end="")
+      await channel.send_stream(agent.process_message(msg_info.text))
 
     feishu_config = config.feishu
     if feishu_config.app_id and feishu_config.app_secret:
