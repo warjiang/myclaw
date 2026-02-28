@@ -73,6 +73,7 @@ class WebSocketFeishuChannel(BaseFeishuChannel):
       log_level=lark.LogLevel.DEBUG,
     )
     self._ws_client.start()
+    logger.info("Feishu WebSocket client started")
 
   async def send(self, message: str, end: str = "\n"):
     logger.info(f"WebSocket mode: message would be sent here: {message[:50]}...")
