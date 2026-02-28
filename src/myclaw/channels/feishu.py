@@ -43,8 +43,8 @@ class WebSocketFeishuChannel(BaseFeishuChannel):
 
   def _do_p2_im_message_receive_v1(self, data: lark.im.v1.P2ImMessageReceiveV1):
     logger.info(f"Received message event: {data}")
-    message = data.message
-    if message.msg_type == "text":
+    message = data.event.message
+    if message and message.message_type == "text":
       content = json.loads(message.content)
       text = content.get("text", "")
       logger.info(f"Received text message: {text}")

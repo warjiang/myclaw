@@ -1,8 +1,18 @@
+import logging
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+LOG_LEVELS = {
+  "DEBUG": logging.DEBUG,
+  "INFO": logging.INFO,
+  "WARNING": logging.WARNING,
+  "ERROR": logging.ERROR,
+  "CRITICAL": logging.CRITICAL,
+}
 
 
 class MCPServerConfig(BaseModel):
@@ -39,6 +49,14 @@ class FeishuConfig(BaseModel):
   webhook_url: str = ""
   http_host: str = "0.0.0.0"
   http_port: int = 8089
+  log_level: str = "INFO"
+
+  @field_validator("log_level", mode="before")
+  @classmethod
+  def parse_log_level(cls, v: str | int) -> int:
+    if isinstance(v, int):
+      return v
+    return LOG_LEVELS.get(v.upper(), logging.INFO)
 
 
 class Config(BaseSettings):
@@ -47,6 +65,14 @@ class Config(BaseSettings):
   provider: ProviderConfig = Field(default_factory=ProviderConfig)
   tools: ToolsConfig = Field(default_factory=ToolsConfig)
   feishu: FeishuConfig = Field(default_factory=FeishuConfig)
+  log_level: str = "INFO"
+
+  @field_validator("log_level", mode="before")
+  @classmethod
+  def parse_log_level(cls, v: str | int) -> int:
+    if isinstance(v, int):
+      return v
+    return LOG_LEVELS.get(v.upper(), logging.INFO)
 
   model_config = SettingsConfigDict(env_prefix="MYCLAW_", env_nested_delimiter="__")
 

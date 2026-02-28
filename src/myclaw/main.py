@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 import typer
 from dotenv import load_dotenv
@@ -19,6 +20,11 @@ console = Console()
 async def async_main():
   try:
     config = Config.load()
+
+    logging.basicConfig(
+      level=config.log_level,
+      format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
 
     agent = ClawAgent(config)
     await agent.initialize()
