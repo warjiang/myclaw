@@ -3,10 +3,10 @@ import asyncio
 import typer
 from rich.console import Console
 
-from src.myclaw.agent.config import Config
-from src.myclaw.agent.core import ClawAgent
-from src.myclaw.channels.cli import CLIChannel
-from src.myclaw.channels.feishu import FeishuChannel
+from myclaw.agent.config import Config
+from myclaw.agent.core import ClawAgent
+from myclaw.channels.cli import CLIChannel
+from myclaw.channels.feishu import FeishuChannel
 
 
 app = typer.Typer()
