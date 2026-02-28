@@ -33,10 +33,12 @@ class WebSocketFeishuChannel(BaseFeishuChannel):
     on_message: Callable[[str], Awaitable[None]],
     app_id: str,
     app_secret: str,
+    log_level: int = logging.INFO,
   ):
     super().__init__(on_message)
     self.app_id = app_id
     self.app_secret = app_secret
+    self.log_level = log_level
     self._ws_client = None
     self._pending_task: asyncio.Task | None = None
     self._loop: asyncio.AbstractEventLoop | None = None
@@ -55,6 +57,7 @@ class WebSocketFeishuChannel(BaseFeishuChannel):
           logger.warning("Event loop not available, skipping message")
 
   async def start(self):
+    logging.getLogger("lark_oapi").setLevel(self.log_level)
     logger.info(f"Starting Feishu WebSocket client with app_id: {self.app_id[:10]}...")
 
     self._loop = asyncio.get_running_loop()

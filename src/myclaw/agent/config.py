@@ -51,8 +51,8 @@ class FeishuConfig(BaseModel):
   http_port: int = 8089
   log_level: str = "INFO"
 
-  @field_validator("log_level", mode="before")
   @classmethod
+  @field_validator("log_level", mode="before")
   def parse_log_level(cls, v: str | int) -> int:
     if isinstance(v, int):
       return v
@@ -67,8 +67,8 @@ class Config(BaseSettings):
   feishu: FeishuConfig = Field(default_factory=FeishuConfig)
   log_level: str = "INFO"
 
-  @field_validator("log_level", mode="before")
   @classmethod
+  @field_validator("log_level", mode="before")
   def parse_log_level(cls, v: str | int) -> int:
     if isinstance(v, int):
       return v
