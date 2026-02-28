@@ -7,6 +7,23 @@ from .config import Config
 from .skills import SkillManager
 
 
+def _get_workspace_dir() -> Path:
+  """Get the workspace directory for the agent.
+
+  Returns:
+      Path to the workspace directory.
+  """
+  # Get the directory where this file is located
+  current_file = Path(__file__).resolve()
+  # Go up to project root (src/myclaw/agent/ -> project root)
+  project_root = current_file.parent.parent.parent.parent
+  # Use myclaw-workspace subdirectory
+  workspace = project_root / "myclaw-workspace"
+  # Create if it doesn't exist
+  workspace.mkdir(parents=True, exist_ok=True)
+  return workspace
+
+
 class ClawAgent:
   def __init__(self, config: Config):
     self.config = config
@@ -14,6 +31,7 @@ class ClawAgent:
       skill_dirs=[Path("skills"), Path("~/.myclaw/skills").expanduser()]
     )
     self.client: ClaudeSDKClient | None = None
+    self.options: ClaudeAgentOptions | None = None
 
   async def initialize(self):
     """Initialize the agent, load skills, and configure options."""
@@ -40,9 +58,11 @@ class ClawAgent:
         pass
 
     self.options = ClaudeAgentOptions(
+      cwd=str(_get_workspace_dir()),
       system_prompt=system_prompt,
       mcp_servers=mcp_servers,
       # Add other options as needed
+      allowed_tools=["Read", "Write", "Edit", "Bash"],
     )
 
   async def process_message(self, message: str) -> AsyncGenerator[str, None]:

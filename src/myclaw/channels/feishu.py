@@ -2,6 +2,7 @@ import asyncio
 import contextvars
 import json
 import logging
+import threading
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
@@ -104,8 +105,19 @@ class WebSocketFeishuChannel(BaseFeishuChannel):
       event_handler=event_handler,
       log_level=lark.LogLevel.DEBUG,
     )
-    self._ws_client.start()
-    logger.info("Feishu WebSocket client started")
+
+    # Run WebSocket client in a separate thread to avoid event loop conflict
+    self._ws_thread = threading.Thread(target=self._ws_client.start, daemon=True)
+    self._ws_thread.start()
+    logger.info("Feishu WebSocket client started in background thread")
+
+    # Keep the coroutine running to prevent main thread from exiting
+    try:
+      while True:
+        await asyncio.sleep(1)
+    except asyncio.CancelledError:
+      logger.info("WebSocket channel cancelled, shutting down...")
+      raise
 
   async def send(self, message: str, end: str = "\n"):
     logger.info(f"WebSocket mode: message would be sent here: {message[:50]}...")
@@ -312,54 +324,77 @@ class FeishuChannel(BaseFeishuChannel):
 
   async def send_stream(self, stream: AsyncIterator[str]):
     sender_id = _current_sender_id_var.get() or self._current_sender_id
-    if not self._feishu_client or not sender_id:
-      logger.warning("Feishu client or sender_id not available, cannot stream message")
+    logger.info(f"send_stream called with sender_id: {sender_id[:10] if sender_id else 'None'}...")
+    
+    if not self._feishu_client:
+      logger.error("Feishu client not available, cannot stream message")
+      return
+    if not sender_id:
+      logger.error("sender_id not available, cannot stream message")
       return
 
     full_message = ""
     message_id = None
     last_update_time = time.time()
     update_interval = 0.5  # seconds
+    chunk_count = 0
 
     try:
       async for chunk in stream:
+        chunk_count += 1
         full_message += chunk
         current_time = time.time()
+        logger.debug(f"Received chunk {chunk_count}, length: {len(chunk)}, total: {len(full_message)}")
 
         # Debounce the updates
         if current_time - last_update_time >= update_interval:
           card_content = self._build_markdown_card(full_message + "▌")
+          logger.info(f"Sending update, message length: {len(full_message)}")
+          try:
+            if message_id is None:
+              # First send
+              logger.info("Sending first message with card")
+              resp = self._feishu_client.send_message_with_card(
+                receive_id=sender_id,
+                card_content=card_content,
+              )
+              message_id = resp.get("message_id")
+              logger.info(f"First message sent, message_id: {message_id}")
+            else:
+              # Patch existing message
+              logger.info(f"Patching message {message_id}")
+              self._feishu_client.patch_message_with_card(
+                message_id=message_id,
+                card_content=card_content,
+              )
+          except Exception as e:
+            logger.exception(f"Error sending/patching message: {e}")
+          last_update_time = current_time
+
+      # Final update without the cursor
+      logger.info(f"Stream ended, total chunks: {chunk_count}, final message length: {len(full_message)}")
+      if full_message:
+        card_content = self._build_markdown_card(full_message)
+        try:
           if message_id is None:
-            # First send
-            resp = self._feishu_client.send_message_with_card(
+            logger.info("Sending final message (no previous message_id)")
+            self._feishu_client.send_message_with_card(
               receive_id=sender_id,
               card_content=card_content,
             )
-            message_id = resp.get("message_id")
           else:
-            # Patch existing message
+            logger.info(f"Patching final message {message_id}")
             self._feishu_client.patch_message_with_card(
               message_id=message_id,
               card_content=card_content,
             )
-          last_update_time = current_time
+        except Exception as e:
+          logger.exception(f"Error sending final message: {e}")
+      else:
+        logger.warning("No message content to send")
 
-      # Final update without the cursor
-      if full_message:
-        card_content = self._build_markdown_card(full_message)
-        if message_id is None:
-          self._feishu_client.send_message_with_card(
-            receive_id=sender_id,
-            card_content=card_content,
-          )
-        else:
-          self._feishu_client.patch_message_with_card(
-            message_id=message_id,
-            card_content=card_content,
-          )
-
-    except Exception:
-      logger.exception("Error during stream sending")
+    except Exception as e:
+      logger.exception(f"Error during stream sending: {e}")
 
 
 class FeishuClient:
