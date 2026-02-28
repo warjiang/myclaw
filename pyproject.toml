@@ -13,6 +13,7 @@ dependencies = [
     "httpx",
     "lark-oapi>=1.0.0",
     "aiohttp>=3.9.0",
+    "dotenv>=0.9.9",
 ]
 
 [project.scripts]
@@ -69,6 +70,8 @@ ignore = [
     "PLR0915",# too-many-statements
     "PLR2004",# magic-value-comparison
     "C901",   # too-complex (let complexity tool handle)
+    "PLC0415",# import within functions (allowed for lazy loading)
+    "F401",   # imported but unused (caused by lazy loading pattern)
 ]
 
 [tool.ruff.lint.pydocstyle]

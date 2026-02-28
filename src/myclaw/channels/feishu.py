@@ -39,16 +39,27 @@ class WebSocketFeishuChannel(BaseFeishuChannel):
     self.app_secret = app_secret
     self._ws_client = None
     self._pending_task: asyncio.Task | None = None
+    self._loop: asyncio.AbstractEventLoop | None = None
 
   def _do_p2_im_message_receive_v1(self, data: lark.im.v1.P2ImMessageReceiveV1):
+    logger.info(f"Received message event: {data}")
     message = data.message
     if message.msg_type == "text":
       content = json.loads(message.content)
       text = content.get("text", "")
+      logger.info(f"Received text message: {text}")
       if text:
-        self._pending_task = asyncio.create_task(self.on_message(text))
+        if self._loop and self._loop.is_running():
+          asyncio.run_coroutine_threadsafe(self.on_message(text), self._loop)
+        else:
+          logger.warning("Event loop not available, skipping message")
 
   async def start(self):
+    logger.info(f"Starting Feishu WebSocket client with app_id: {self.app_id[:10]}...")
+
+    self._loop = asyncio.get_running_loop()
+    logger.info(f"Got event loop: {self._loop}")
+
     event_handler = (
       lark.EventDispatcherHandler.builder("", "")
       .register_p2_im_message_receive_v1(self._do_p2_im_message_receive_v1)
@@ -94,13 +105,17 @@ class HttpFeishuChannel(BaseFeishuChannel):
     self.host = host
     self.port = port
     self._server = None
+    self._conf = None
 
-    self.conf = lark.Config.new_internal_app_settings(
-      app_id=self.app_id,
-      app_secret=self.app_secret,
-      verification_token=self.verification_token,
-      encrypt_key=self.encrypt_key,
-    )
+  def _get_conf(self):
+    if self._conf is None:
+      self._conf = lark.Config.new_internal_app_settings(
+        app_id=self.app_id,
+        app_secret=self.app_secret,
+        verification_token=self.verification_token,
+        encrypt_key=self.encrypt_key,
+      )
+    return self._conf
 
   async def start(self):
     async def handle_webhook(request: web.Request) -> web.Response:
@@ -110,7 +125,7 @@ class HttpFeishuChannel(BaseFeishuChannel):
         body=body,
         header=lark.OapiHeader(dict(request.headers)),
       )
-      oapi_resp = lark.handle_event(self.conf, oapi_request)
+      oapi_resp = lark.handle_event(self._get_conf(), oapi_request)
 
       if oapi_resp.status_code == 200:
         try:

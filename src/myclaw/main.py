@@ -1,6 +1,7 @@
 import asyncio
 
 import typer
+from dotenv import load_dotenv
 from rich.console import Console
 
 from myclaw.agent.config import Config
@@ -8,6 +9,8 @@ from myclaw.agent.core import ClawAgent
 from myclaw.channels.cli import CLIChannel
 from myclaw.channels.feishu import FeishuChannel
 
+
+load_dotenv()
 
 app = typer.Typer()
 console = Console()

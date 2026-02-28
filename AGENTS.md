@@ -91,6 +91,10 @@ def function_name(param1: str, param2: int) -> bool:
 
 3. **Imports**: Group imports in order: stdlib, third-party, local.
 
+4. **Minimize Import Impact**: Avoid importing heavy third-party libraries (especially those with many dependencies like `lark_oapi`) at the top of files. Instead:
+   - Use lazy imports inside functions where the library is actually used
+   - This significantly improves startup time for CLI applications
+
 ## Core Agent
 
 ### ClawAgent
