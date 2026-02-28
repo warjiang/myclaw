@@ -2,19 +2,17 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies if needed (e.g. git for skill import)
-RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y git curl && rm -rf /var/lib/apt/lists/*
 
-# Copy project files
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
+
 COPY pyproject.toml README.md ./
 COPY src ./src
 
-# Install dependencies and the package
-RUN pip install --no-cache-dir .
+RUN uv pip install --system -e .
 
-# Create directories for config and skills
 RUN mkdir -p /root/.myclaw/skills
 
-# Set entrypoint
 ENTRYPOINT ["myclaw"]
 CMD ["start"]

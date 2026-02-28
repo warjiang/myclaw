@@ -49,10 +49,10 @@ This project uses [uv](https://github.com/astral-sh/uv) for dependency managemen
 
 **Key Commands**:
 ```bash
-# Install dependencies
-uv pip install <package>
+# Install all dependencies (including dev)
+uv pip install -e ".[dev]"
 
-# Install development dependencies
+# Install development dependencies only
 uv pip install -e ".[dev]"
 
 # Run commands with dependencies
@@ -64,8 +64,9 @@ uv sync
 
 **Important**:
 - Never use `pip install` directly - always use `uv pip install`
-- When adding new dependencies, update `pyproject.toml` and run `uv sync`
+- When adding new dependencies, update `pyproject.toml` and run `uv pip install -e ".[dev]"`
 - Use `uv run` to execute any Python scripts or commands that need dependencies
+- Run `uv run pre-commit install` to set up pre-commit hooks
 
 ### Writing Code
 

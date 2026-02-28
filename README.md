@@ -17,9 +17,13 @@ A re-implementation of OpenClaw/Nanobot using the [Claude Agent SDK](https://git
 1.  Clone the repository.
 2.  Install dependencies:
     ```bash
-    uv pip install -e .
+    uv pip install -e ".[dev]"
     ```
-3.  Run the agent:
+3.  Install pre-commit hooks:
+    ```bash
+    uv run pre-commit install
+    ```
+4.  Run the agent:
     ```bash
     myclaw start
     ```
