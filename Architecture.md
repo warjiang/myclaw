@@ -1,7 +1,7 @@
 # Project Specification: myclaw
 
 ## Overview
-Re-implementation of `nanobot` (OpenClaw simplified) using `claude-agent-sdk-python`.
+Re-implementation of `nanobot` (MyClaw simplified) using `claude-agent-sdk-python`.
 The goal is to create a personal AI assistant that supports MCP, Skills, and multiple channels, running in a containerized environment.
 
 ## Architecture

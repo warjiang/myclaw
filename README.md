@@ -1,6 +1,6 @@
 # MyClaw Next
 
-A re-implementation of OpenClaw/Nanobot using the [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-python).
+A re-implementation of MyClaw/Nanobot using the [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-python).
 
 ## Features
 

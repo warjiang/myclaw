@@ -19,7 +19,7 @@ class ClawAgent:
     """Initialize the agent, load skills, and configure options."""
     self.skill_manager.load_skills()
 
-    system_prompt = "You are OpenClaw, a personal AI assistant.\n"
+    system_prompt = "You are MyClaw, a personal AI assistant.\n"
     system_prompt += self.skill_manager.get_system_prompt_addition()
 
     # Configure MCP servers from config
