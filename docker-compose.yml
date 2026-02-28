@@ -1,0 +1,11 @@
+services:
+  myclaw:
+    build: .
+    volumes:
+      - ./config.yaml:/app/config.yaml
+      - ./skills:/root/.myclaw/skills
+    env_file:
+      - .env
+    stdin_open: true
+    tty: true
+    network_mode: host
