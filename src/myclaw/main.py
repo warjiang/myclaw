@@ -15,6 +15,7 @@ load_dotenv()
 
 app = typer.Typer()
 console = Console()
+logger = logging.getLogger(__name__)
 
 
 async def async_main():
@@ -51,17 +52,25 @@ async def async_main():
 
     await channel.start()
 
+  except asyncio.CancelledError:
+    console.print("\n[bold yellow]Agent shutdown initiated...[/bold yellow]")
   except Exception as e:
     console.print(f"[bold red]Fatal Error:[/bold red] {e}")
   finally:
     if "agent" in locals():
-      await agent.close()
+      try:
+        await agent.close()
+      except Exception as e:
+        logger.debug(f"Error closing agent: {e}")
 
 
 @app.command()
 def start():
   """Start the MyClaw agent."""
-  asyncio.run(async_main())
+  try:
+    asyncio.run(async_main())
+  except KeyboardInterrupt:
+    console.print("\n[bold yellow]Agent stopped by user.[/bold yellow]")
 
 
 if __name__ == "__main__":
