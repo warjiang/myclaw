@@ -37,6 +37,10 @@ A re-implementation of OpenClaw/Nanobot using the [Claude Agent SDK](https://git
 
 ## Configuration
 
+You can configure MyClaw using either a `config.yaml` file or environment variables.
+
+### Using config.yaml
+
 Create a `config.yaml` file in the root directory or `~/.myclaw/config.yaml`:
 
 ```yaml
@@ -50,6 +54,20 @@ tools:
       command: "npx"
       args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/dir"]
 ```
+
+### Using Environment Variables
+
+Alternatively, you can use environment variables. Copy `.env.example` to `.env` and fill in your values:
+
+```bash
+cp .env.example .env
+# Edit .env with your configuration
+```
+
+The environment variables follow this pattern:
+- `MYCLAW_PROVIDER__API_KEY` - LLM API key
+- `MYCLAW_PROVIDER__MODEL` - Model name (default: claude-3-opus-20240229)
+- `MYCLAW_FEISHU__*` - Feishu configuration (see Feishu Channel section)
 
 ## Skills
 
