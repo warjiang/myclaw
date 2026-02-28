@@ -2,6 +2,7 @@ from rich.console import Console
 from rich.prompt import Prompt
 
 from .base import BaseChannel
+from .feishu import MessageInfo
 
 
 console = Console()
@@ -19,8 +20,8 @@ class CLIChannel(BaseChannel):
         if user_input.lower() in ("exit", "quit", "/bye"):
           break
 
-        # Send to agent (on_message is async)
-        await self.on_message(user_input)
+        msg_info = MessageInfo(text=user_input, sender_id="")
+        await self.on_message(msg_info)
 
       except KeyboardInterrupt:
         break

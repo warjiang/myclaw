@@ -1,14 +1,28 @@
 import asyncio
+import contextvars
 import json
 import logging
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 import lark_oapi as lark
 from aiohttp import web
 
 
+_current_sender_id_var = contextvars.ContextVar("current_sender_id", default="")
+
+
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class MessageInfo:
+  text: str
+  sender_id: str
+  message_id: str = ""
+  chat_id: str = ""
 
 
 class FeishuMode(str, Enum):
@@ -17,7 +31,7 @@ class FeishuMode(str, Enum):
 
 
 class BaseFeishuChannel:
-  def __init__(self, on_message: Callable[[str], Awaitable[None]]):
+  def __init__(self, on_message: Callable[[MessageInfo], Awaitable[None]]):
     self.on_message = on_message
 
   async def start(self):
@@ -30,7 +44,7 @@ class BaseFeishuChannel:
 class WebSocketFeishuChannel(BaseFeishuChannel):
   def __init__(
     self,
-    on_message: Callable[[str], Awaitable[None]],
+    on_message: Callable[[MessageInfo], Awaitable[None]],
     app_id: str,
     app_secret: str,
     log_level: int = logging.INFO,
@@ -50,9 +64,20 @@ class WebSocketFeishuChannel(BaseFeishuChannel):
       content = json.loads(message.content)
       text = content.get("text", "")
       logger.info(f"Received text message: {text}")
+      sender_id = ""
+      if data.event.sender and data.event.sender.sender_id:
+        sender_id = data.event.sender.sender_id.open_id
+      message_id = message.message_id if message else ""
+      chat_id = message.chat_id if message else ""
       if text:
+        msg_info = MessageInfo(
+          text=text,
+          sender_id=sender_id,
+          message_id=message_id,
+          chat_id=chat_id,
+        )
         if self._loop and self._loop.is_running():
-          asyncio.run_coroutine_threadsafe(self.on_message(text), self._loop)
+          asyncio.run_coroutine_threadsafe(self.on_message(msg_info), self._loop)
         else:
           logger.warning("Event loop not available, skipping message")
 
@@ -91,7 +116,7 @@ class FeishuError(Exception):
 class HttpFeishuChannel(BaseFeishuChannel):
   def __init__(
     self,
-    on_message: Callable[[str], Awaitable[None]],
+    on_message: Callable[[MessageInfo], Awaitable[None]],
     app_id: str,
     app_secret: str,
     verification_token: str,
@@ -140,14 +165,32 @@ class HttpFeishuChannel(BaseFeishuChannel):
             message = event_data.get("message", {})
             if message.get("msg_type") == "text":
               content = message.get("content", "")
+              sender_id = ""
+              sender_info = event_data.get("sender", {})
+              sender_id_info = sender_info.get("sender_id", {})
+              sender_id = sender_id_info.get("user_id", "")
+              message_id = message.get("message_id", "")
+              chat_id = message.get("chat_id", "")
               if content:
                 try:
                   content_data = json.loads(content)
                   text = content_data.get("text", "")
                   if text:
-                    await self.on_message(text)
+                    msg_info = MessageInfo(
+                      text=text,
+                      sender_id=sender_id,
+                      message_id=message_id,
+                      chat_id=chat_id,
+                    )
+                    await self.on_message(msg_info)
                 except json.JSONDecodeError:
-                  await self.on_message(content)
+                  msg_info = MessageInfo(
+                    text=content,
+                    sender_id=sender_id,
+                    message_id=message_id,
+                    chat_id=chat_id,
+                  )
+                  await self.on_message(msg_info)
         except Exception:
           logger.exception("Error parsing message")
 
@@ -176,7 +219,7 @@ class HttpFeishuChannel(BaseFeishuChannel):
 class FeishuChannel(BaseFeishuChannel):
   def __init__(
     self,
-    on_message: Callable[[str], Awaitable[None]],
+    on_message: Callable[[MessageInfo], Awaitable[None]],
     app_id: str,
     app_secret: str,
     verification_token: str = "",
@@ -196,17 +239,35 @@ class FeishuChannel(BaseFeishuChannel):
     self.http_host = http_host
     self.http_port = http_port
     self._channel: BaseFeishuChannel | None = None
+    self._current_sender_id: str = ""
+    self._feishu_client: FeishuClient | None = None
+
+  def _wrap_on_message(
+    self, original_callback: Callable[[MessageInfo], Awaitable[None]]
+  ) -> Callable[[MessageInfo], Awaitable[None]]:
+    async def wrapper(msg_info: MessageInfo):
+      self._current_sender_id = msg_info.sender_id
+      token = _current_sender_id_var.set(msg_info.sender_id)
+      try:
+        await original_callback(msg_info)
+      finally:
+        _current_sender_id_var.reset(token)
+
+    return wrapper
 
   async def start(self):
+    self._feishu_client = FeishuClient(self.app_id, self.app_secret)
+    wrapped_callback = self._wrap_on_message(self.on_message)
+
     if self.mode == FeishuMode.WEBSOCKET:
       self._channel = WebSocketFeishuChannel(
-        self.on_message,
+        wrapped_callback,
         self.app_id,
         self.app_secret,
       )
     else:
       self._channel = HttpFeishuChannel(
-        self.on_message,
+        wrapped_callback,
         self.app_id,
         self.app_secret,
         self.verification_token,
@@ -219,8 +280,21 @@ class FeishuChannel(BaseFeishuChannel):
     await self._channel.start()
 
   async def send(self, message: str, end: str = "\n"):
-    if self._channel:
-      await self._channel.send(message, end)
+    sender_id = _current_sender_id_var.get() or self._current_sender_id
+    if self._feishu_client and sender_id:
+      try:
+        full_message = message + end
+        self._feishu_client.send_message(
+          receive_id=sender_id,
+          message=full_message,
+        )
+        logger.info(f"Message sent to {sender_id}: {message[:50]}...")
+      except FeishuError as e:
+        logger.exception(f"Failed to send message: {e.message}")
+      except Exception:
+        logger.exception("Error sending message")
+    else:
+      logger.warning("No sender_id available, cannot send message")
 
 
 class FeishuClient:
@@ -231,11 +305,13 @@ class FeishuClient:
 
   def _get_client(self) -> lark.Client:
     if self._client is None:
-      base_config = lark.Config(
-        app_id=self.app_id,
-        app_secret=self.app_secret,
+      self._client = (
+        lark.Client.builder()
+        .app_id(self.app_id)
+        .app_secret(self.app_secret)
+        .log_level(lark.LogLevel.DEBUG)
+        .build()
       )
-      self._client = lark.Client(base_config)
     return self._client
 
   def send_message(
@@ -246,14 +322,19 @@ class FeishuClient:
     receive_id_type: str = "open_id",
   ) -> dict:
     client = self._get_client()
-    resp = client.im.v1.message.create(
-      params=lark.CreateMessageParams(receive_id_type=receive_id_type),
-      request=lark.CreateMessageRequest(
-        receive_id=receive_id,
-        msg_type=msg_type,
-        content=lark.JSON.marshal({"text": message}),
-      ),
+    request = (
+      lark.im.v1.CreateMessageRequest.builder()
+      .receive_id_type(receive_id_type)
+      .request_body(
+        lark.im.v1.CreateMessageRequestBody.builder()
+        .receive_id(receive_id)
+        .msg_type(msg_type)
+        .content(lark.JSON.marshal({"text": message}))
+        .build()
+      )
+      .build()
     )
+    resp = client.im.v1.message.create(request)
     if resp.code == 0:
       return {"message_id": resp.data.message_id}
     msg = f"Failed to send message: {resp.msg}"
@@ -266,14 +347,19 @@ class FeishuClient:
     receive_id_type: str = "open_id",
   ) -> dict:
     client = self._get_client()
-    resp = client.im.v1.message.create(
-      params=lark.CreateMessageParams(receive_id_type=receive_id_type),
-      request=lark.CreateMessageRequest(
-        receive_id=receive_id,
-        msg_type="interactive",
-        content=card_content,
-      ),
+    request = (
+      lark.im.v1.CreateMessageRequest.builder()
+      .receive_id_type(receive_id_type)
+      .request_body(
+        lark.im.v1.CreateMessageRequestBody.builder()
+        .receive_id(receive_id)
+        .msg_type("interactive")
+        .content(card_content)
+        .build()
+      )
+      .build()
     )
+    resp = client.im.v1.message.create(request)
     if resp.code == 0:
       return {"message_id": resp.data.message_id}
     msg = f"Failed to send card message: {resp.msg}"

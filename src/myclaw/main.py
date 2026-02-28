@@ -8,7 +8,7 @@ from rich.console import Console
 from myclaw.agent.config import Config
 from myclaw.agent.core import ClawAgent
 from myclaw.channels.cli import CLIChannel
-from myclaw.channels.feishu import FeishuChannel
+from myclaw.channels.feishu import FeishuChannel, MessageInfo
 
 
 load_dotenv()
@@ -29,11 +29,22 @@ async def async_main():
     agent = ClawAgent(config)
     await agent.initialize()
 
-    async def handle_message(text: str):
-      console.print("[bold purple]Claw:[/bold purple] ", end="")
-      async for chunk in agent.process_message(text):
-        console.print(chunk, end="")
-      console.print()
+    async def handle_message(msg_info: MessageInfo):
+      is_cli = isinstance(channel, CLIChannel)
+      if is_cli:
+        console.print("[bold purple]Claw:[/bold purple] ", end="")
+
+      full_response = ""
+      async for chunk in agent.process_message(msg_info.text):
+        if is_cli:
+          console.print(chunk, end="")
+        else:
+          full_response += chunk
+
+      if is_cli:
+        console.print()
+      elif full_response:
+        await channel.send(full_response, end="")
 
     feishu_config = config.feishu
     if feishu_config.app_id and feishu_config.app_secret:
