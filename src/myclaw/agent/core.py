@@ -1,61 +1,18 @@
 from collections.abc import AsyncGenerator
-from pathlib import Path
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from loguru import logger
 
 from myclaw.agent.skills import SkillManager
 from myclaw.config import Config
-
-
-def _get_skill_dirs() -> list[Path]:
-  """Get skill directories by walking up from current dir to home.
-
-  Returns:
-      List of skill directories from current dir up to home.
-  """
-  skill_dirs = []
-  current = Path.cwd().resolve()
-  home = Path.home().resolve()
-
-  # Walk up from current dir to home, collecting skills dirs
-  while True:
-    skills_dir = current / "skills"
-    if skills_dir.exists() and skills_dir.is_dir():
-      skill_dirs.append(skills_dir)
-    if current == home:
-      break
-    parent = current.parent
-    if parent == current:  # Reached root
-      break
-    current = parent
-
-  # Always add ~/.myclaw/skills as fallback
-  user_skills = Path("~/.myclaw/skills").expanduser()
-  if user_skills not in skill_dirs:
-    skill_dirs.append(user_skills)
-
-  return skill_dirs
-
-
-def _get_workspace_dir() -> Path:
-  """Get the workspace directory for the agent.
-
-  Returns:
-      Path to the workspace directory.
-  """
-  current_file = Path(__file__).resolve()
-  project_root = current_file.parent.parent.parent.parent
-  workspace = project_root / "myclaw-workspace"
-  workspace.mkdir(parents=True, exist_ok=True)
-  return workspace
+from myclaw.utils.paths import get_skill_dirs, get_workspace_dir
 
 
 class ClawAgent:
   def __init__(self, config: Config):
     self.config = config
     self.skill_manager = SkillManager(
-      skill_dirs=_get_skill_dirs()
+      skill_dirs=get_skill_dirs()
     )
     self.client: ClaudeSDKClient | None = None
     self.options: ClaudeAgentOptions | None = None
@@ -98,7 +55,7 @@ class ClawAgent:
         "ANTHROPIC_DEFAULT_OPUS_MODEL": claudecode_cfg.opus_model,
         "ANTHROPIC_DEFAULT_SONNET_MODEL": claudecode_cfg.sonnet_model,
       },
-      cwd=str(_get_workspace_dir()),
+      cwd=str(get_workspace_dir()),
       system_prompt=system_prompt,
       mcp_servers=mcp_servers,
       # Add other options as needed
