@@ -36,8 +36,8 @@ event_handler = (
 def main():
   load_dotenv()
   cli = lark.ws.Client(
-    os.environ.get("MYCLAW_FEISHU__APP_ID"),
-    os.environ.get("MYCLAW_FEISHU__APP_SECRET"),
+    os.environ.get("FEISHU_APP_ID"),
+    os.environ.get("FEISHU_APP_SECRET"),
     event_handler=event_handler,
     log_level=lark.LogLevel.DEBUG,
   )

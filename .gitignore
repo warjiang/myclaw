@@ -206,7 +206,11 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-nanobot
+ nanobot
 .idea
 .agents
 .claude
+myclaw-workspace
+config.json
+config.litellm.json
+config.deepseek.json
