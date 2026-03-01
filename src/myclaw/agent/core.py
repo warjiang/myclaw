@@ -98,6 +98,21 @@ class ClawAgent:
       "- Do NOT use sandbox: prefix in file paths when referencing them\n"
     )
 
+    # Add task completion requirement to system prompt
+    system_prompt += (
+      "\n\n## Task Completion Protocol\n"
+      "When you have completed the user's task, you MUST end your response with the "
+      "special marker: [TASK_COMPLETE]\n"
+      "This marker signals to the system that the task is finished and no further "
+      "actions are needed.\n"
+      "\nExample response format:\n"
+      "```\n"
+      "I have successfully completed the task. The file has been created at ...\n"
+      "\n"
+      "[TASK_COMPLETE]\n"
+      "```\n"
+    )
+
     # Configure MCP servers from config
     mcp_servers = self._build_mcp_servers_config()
     claudecode_cfg = self.config.claudecode
@@ -135,6 +150,7 @@ class ClawAgent:
 
     # Receive response
     logger.debug("Waiting for response from agent...")
+    task_completed = False
     async for msg in self.client.receive_response():
       # logger.debug("Received message type: {}", type(msg).__name__)
 
@@ -146,7 +162,16 @@ class ClawAgent:
           if isinstance(block, TextBlock):
             text_preview = block.text[:100] + "..." if len(block.text) > 100 else block.text
             logger.debug("Received text block: {}", text_preview)
-            yield block.text
+            # Check for task completion marker
+            if "[TASK_COMPLETE]" in block.text:
+              task_completed = True
+              # Remove the marker from the text before yielding
+              clean_text = block.text.replace("[TASK_COMPLETE]", "").strip()
+              if clean_text:
+                yield clean_text
+              yield "\n\n✅ **任务已完成**"
+            else:
+              yield block.text
           elif isinstance(block, ThinkingBlock):
             logger.debug("Received thinking block (skipped)")
           elif isinstance(block, ToolUseBlock):
@@ -158,9 +183,21 @@ class ClawAgent:
       elif isinstance(msg, str):
         text_preview = msg[:100] + "..." if len(msg) > 100 else msg
         logger.debug("Received string message: {}", text_preview)
-        yield msg
+        # Check for task completion marker in string messages too
+        if "[TASK_COMPLETE]" in msg:
+          task_completed = True
+          clean_text = msg.replace("[TASK_COMPLETE]", "").strip()
+          if clean_text:
+            yield clean_text
+          yield "\n\n✅ **任务已完成**"
+        else:
+          yield msg
       else:
         logger.debug("Unknown message type: {}, message: {}", type(msg).__name__, message)
+
+    # If task was completed, add a final notification
+    if task_completed:
+      logger.info("Task completed successfully")
 
   async def close(self):
     if self.client:
