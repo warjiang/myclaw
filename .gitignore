@@ -212,3 +212,5 @@ __marimo__/
 .claude
 myclaw-workspace
 config.json
+config.litellm.json
+config.deepseek.json

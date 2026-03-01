@@ -4,10 +4,11 @@ from claude_agent_sdk import (
   AssistantMessage,
   ClaudeAgentOptions,
   ClaudeSDKClient,
+  PermissionMode,
   TextBlock,
   ThinkingBlock,
   ToolResultBlock,
-  ToolUseBlock, PermissionMode,
+  ToolUseBlock,
 )
 from loguru import logger
 
@@ -83,6 +84,19 @@ class ClawAgent:
 
     system_prompt = "You are MyClaw, a personal AI assistant.\n"
     system_prompt += self.skill_manager.get_system_prompt_addition()
+
+    # Add screenshot path restriction to system prompt
+    workspace_dir = get_workspace_dir()
+    system_prompt += (
+      "\n\n## Screenshot and File Output Rules\n"
+      "When saving screenshots or any output files, you MUST save them to the "
+      f"following directory: {workspace_dir}\n"
+      "- Screenshots: Save to the workspace directory with descriptive names\n"
+      "- When referencing files in your response, use the full path or relative path "
+      f"from workspace: {workspace_dir}/filename.png\n"
+      "- Do NOT save files to system temp directories like /tmp, /var/folders, etc.\n"
+      "- Do NOT use sandbox: prefix in file paths when referencing them\n"
+    )
 
     # Configure MCP servers from config
     mcp_servers = self._build_mcp_servers_config()
