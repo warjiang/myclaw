@@ -425,17 +425,28 @@ class FeishuChannel(BaseChannel):
         - - list -> - list (list, same)
         - 1. list -> 1. list (ordered list, same)
 
-        But we need to ensure proper escaping and formatting for Feishu.
+        Also fixes common markdown formatting issues from Claude's output.
         """
-        # For now, lark_md supports standard markdown syntax
-        # Just return as-is, but we can add transformations here if needed
-        return content
+        import re
+
+        # Fix malformed bold markers: ****text** -> **text**
+        # Pattern: even number of asterisks at end followed by content and odd asterisks
+        content = re.sub(r'\*{4,}([^*]+)\*{2,}', r'**\1**', content)
+
+        # Fix cases like: **text**** -> **text**
+        content = re.sub(r'\*{2}([^*]+)\*{4,}', r'**\1**', content)
+
+        # Fix multiple consecutive bold markers: **** -> **
+        return re.sub(r'\*{4,}', r'**', content)
 
     def _build_card_elements(self, content: str) -> list[dict]:
         """Split content into div/markdown + table elements for Feishu card.
 
         Uses lark_md format for better markdown compatibility with Feishu.
         """
+        # Convert markdown to fix formatting issues
+        content = self._convert_md_to_lark_md(content)
+
         elements, last_end = [], 0
         for m in self._TABLE_RE.finditer(content):
             before = content[last_end:m.start()]

@@ -20,7 +20,7 @@ from claude_agent_sdk import (
     ToolUseBlock,
     UserMessage,
     create_sdk_mcp_server,
-    tool,
+    tool, SdkPluginConfig,
 )
 from loguru import logger
 
@@ -170,7 +170,7 @@ class ClawAgentConnect:
         return mcp_servers
 
     def _build_single_mcp_config(
-        self, name: str, config: MCPServerConfig
+            self, name: str, config: MCPServerConfig
     ) -> dict | None:
         """Build configuration for a single MCP server.
 
@@ -271,6 +271,9 @@ class ClawAgentConnect:
                 "mcp__utilities__task_complete",
             ],
             permission_mode="bypassPermissions",
+            plugins=[
+                SdkPluginConfig(type="local", path="/Users/dingwenjiang/workspace/codereview/warjiang/myclaw/plugins/memsearch")
+            ]
         )
 
         logger.info("Agent initialized with connect mode")
