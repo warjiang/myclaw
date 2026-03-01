@@ -16,6 +16,8 @@ from myclaw.bus.events import OutboundMessage
 from myclaw.bus.queue import MessageBus
 from myclaw.channels.base import BaseChannel
 from myclaw.config.schema import FeishuConfig
+from myclaw.utils.logging_bridge import bridge_lark_logging
+
 
 try:
     import lark_oapi as lark
@@ -35,6 +37,9 @@ try:
     )
 
     FEISHU_AVAILABLE = True
+
+    # Bridge lark-oapi logging to loguru
+    bridge_lark_logging()
 except ImportError:
     FEISHU_AVAILABLE = False
     lark = None
@@ -211,9 +216,7 @@ def _extract_post_content(content_json: dict) -> tuple[str, list[str]]:
             for element in block:
                 if isinstance(element, dict):
                     tag = element.get("tag")
-                    if tag == "text":
-                        text_parts.append(element.get("text", ""))
-                    elif tag == "a":
+                    if tag == "text" or tag == "a":
                         text_parts.append(element.get("text", ""))
                     elif tag == "at":
                         text_parts.append(f"@{element.get('user_name', 'user')}")
@@ -475,9 +478,8 @@ class FeishuChannel(BaseChannel):
                     image_key = response.data.image_key
                     logger.debug("Uploaded image {}: {}", os.path.basename(file_path), image_key)
                     return image_key
-                else:
-                    logger.error("Failed to upload image: code={}, msg={}", response.code, response.msg)
-                    return None
+                logger.error("Failed to upload image: code={}, msg={}", response.code, response.msg)
+                return None
         except Exception as e:
             logger.error("Error uploading image {}: {}", file_path, e)
             return None
@@ -502,9 +504,8 @@ class FeishuChannel(BaseChannel):
                     file_key = response.data.file_key
                     logger.debug("Uploaded file {}: {}", file_name, file_key)
                     return file_key
-                else:
-                    logger.error("Failed to upload file: code={}, msg={}", response.code, response.msg)
-                    return None
+                logger.error("Failed to upload file: code={}, msg={}", response.code, response.msg)
+                return None
         except Exception as e:
             logger.error("Error uploading file {}: {}", file_path, e)
             return None
@@ -524,9 +525,8 @@ class FeishuChannel(BaseChannel):
                 if hasattr(file_data, 'read'):
                     file_data = file_data.read()
                 return file_data, response.file_name
-            else:
-                logger.error("Failed to download image: code={}, msg={}", response.code, response.msg)
-                return None, None
+            logger.error("Failed to download image: code={}, msg={}", response.code, response.msg)
+            return None, None
         except Exception as e:
             logger.error("Error downloading image {}: {}", image_key, e)
             return None, None
@@ -549,9 +549,8 @@ class FeishuChannel(BaseChannel):
                 if hasattr(file_data, "read"):
                     file_data = file_data.read()
                 return file_data, response.file_name
-            else:
-                logger.error("Failed to download {}: code={}, msg={}", resource_type, response.code, response.msg)
-                return None, None
+            logger.error("Failed to download {}: code={}, msg={}", resource_type, response.code, response.msg)
+            return None, None
         except Exception:
             logger.exception("Error downloading {} {}", resource_type, file_key)
             return None, None
