@@ -146,7 +146,7 @@ class ClawAgent:
         logger.debug("Received string message: {}", text_preview)
         yield msg
       else:
-        logger.debug("Unknown message type: {}", type(msg).__name__)
+        logger.debug("Unknown message type: {}, message: {}", type(msg).__name__, message)
 
   async def close(self):
     if self.client:

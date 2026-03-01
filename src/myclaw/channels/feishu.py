@@ -389,6 +389,12 @@ class FeishuChannel(BaseChannel):
 
     _CODE_BLOCK_RE = re.compile(r"(```[\s\S]*?```)", re.MULTILINE)
 
+    # Markdown image: ![alt](url_or_path)
+    _MD_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
+
+    # Image file extensions for path detection
+    _IMAGE_EXTENSIONS = frozenset([".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".ico", ".tiff", ".tif"])
+
     @staticmethod
     def _parse_md_table(table_text: str) -> dict | None:
         """Parse a markdown table into a Feishu table element."""
@@ -452,6 +458,85 @@ class FeishuChannel(BaseChannel):
             for el in elements:
                 if el.get("tag") == "markdown":
                     el["content"] = el["content"].replace(f"\x00CODE{i}\x00", cb)
+
+        return elements or [{"tag": "markdown", "content": content}]
+
+    def _build_card_elements_with_images(
+        self, content: str, image_map: dict[str, str]
+    ) -> list[dict]:
+        """Build card elements, converting markdown images and file paths to Feishu img elements.
+
+        Args:
+            content: Message content with markdown images or file paths.
+            image_map: Mapping of image paths to Feishu image_keys.
+
+        Returns:
+            List of Feishu card elements.
+        """
+        elements = []
+        last_end = 0
+
+        # Combine markdown images and file paths for processing
+        # Create a list of (start, end, path, alt_text) tuples
+        image_spans = []
+
+        # Find markdown images
+        for match in self._MD_IMAGE_RE.finditer(content):
+            image_path = match.group(2)
+            clean_path = image_path
+            if clean_path.startswith("sandbox:"):
+                clean_path = clean_path[8:]
+            if clean_path in image_map:
+                image_spans.append((
+                    match.start(),
+                    match.end(),
+                    clean_path,
+                    match.group(1) or "image",
+                ))
+
+        # Find plain text image paths
+        for line_match in re.finditer(r".*", content):
+            line = line_match.group(0)
+            for word in line.replace("`", " ").replace("'", " ").replace('"', " ").split():
+                potential_path = word.strip()
+                if potential_path.startswith("sandbox:"):
+                    potential_path = potential_path[8:]
+                if potential_path in image_map:
+                    # Find the position of this path in the original content
+                    start_idx = content.find(word, line_match.start())
+                    if start_idx >= 0:
+                        image_spans.append((
+                            start_idx,
+                            start_idx + len(word),
+                            potential_path,
+                            "image",
+                        ))
+
+        # Sort by position and remove duplicates
+        image_spans = sorted(set(image_spans), key=lambda x: x[0])
+
+        for start, end, path, alt_text in image_spans:
+            # Add text before this image
+            before = content[last_end:start]
+            if before.strip():
+                elements.extend(self._build_card_elements(before))
+
+            # Add img element
+            elements.append({
+                "tag": "img",
+                "img_key": image_map[path],
+                "alt": {
+                    "tag": "plain_text",
+                    "content": alt_text,
+                },
+            })
+
+            last_end = end
+
+        # Add remaining text
+        remaining = content[last_end:]
+        if remaining.strip():
+            elements.extend(self._build_card_elements(remaining))
 
         return elements or [{"tag": "markdown", "content": content}]
 
@@ -635,6 +720,7 @@ class FeishuChannel(BaseChannel):
             receive_id_type = "chat_id" if msg.chat_id.startswith("oc_") else "open_id"
             loop = asyncio.get_running_loop()
 
+            # Handle explicit media attachments
             for file_path in msg.media:
                 if not os.path.isfile(file_path):
                     logger.warning("Media file not found: {}", file_path)
@@ -656,8 +742,79 @@ class FeishuChannel(BaseChannel):
                             receive_id_type, msg.chat_id, media_type, json.dumps({"file_key": key}, ensure_ascii=False),
                         )
 
+            # Handle content with embedded markdown images and file paths
             if msg.content and msg.content.strip():
-                card = {"config": {"wide_screen_mode": True}, "elements": self._build_card_elements(msg.content)}
+                content = msg.content
+                image_map: dict[str, str] = {}  # path -> image_key
+
+                # Extract and upload markdown images: ![alt](path)
+                for match in self._MD_IMAGE_RE.finditer(msg.content):
+                    image_path = match.group(2)
+
+                    # Skip URLs (only process local file paths)
+                    if image_path.startswith(("http://", "https://", "data:")):
+                        continue
+
+                    # Clean up path (remove sandbox: prefix if present)
+                    clean_path = image_path
+                    if clean_path.startswith("sandbox:"):
+                        clean_path = clean_path[8:]
+
+                    # Check if file exists and is an image
+                    if not os.path.isfile(clean_path):
+                        logger.warning("Markdown image not found: {}", clean_path)
+                        continue
+
+                    ext = os.path.splitext(clean_path)[1].lower()
+                    if ext not in self._IMAGE_EXTENSIONS:
+                        continue
+
+                    # Upload image if not already uploaded
+                    if clean_path not in image_map:
+                        key = await loop.run_in_executor(None, self._upload_image_sync, clean_path)
+                        if key:
+                            image_map[clean_path] = key
+                            logger.debug("Uploaded markdown image: {} -> {}", clean_path, key)
+
+                # Extract and upload image paths from plain text (e.g., "/var/folders/.../img.png")
+                # Look for paths with image extensions in the content
+                for line in msg.content.split("\n"):
+                    # Find potential file paths (simple heuristic: look for paths with image extensions)
+                    words = line.replace("`", " ").replace("'", " ").replace('"', " ").split()
+                    for word in words:
+                        # Clean up the word
+                        potential_path = word.strip()
+
+                        # Skip URLs
+                        if potential_path.startswith(("http://", "https://", "data:")):
+                            continue
+
+                        # Remove sandbox: prefix if present
+                        if potential_path.startswith("sandbox:"):
+                            potential_path = potential_path[8:]
+
+                        # Check if it has an image extension
+                        ext = os.path.splitext(potential_path)[1].lower()
+                        if ext not in self._IMAGE_EXTENSIONS:
+                            continue
+
+                        # Check if file exists
+                        if not os.path.isfile(potential_path):
+                            continue
+
+                        # Skip if already processed
+                        if potential_path in image_map:
+                            continue
+
+                        # Upload image
+                        key = await loop.run_in_executor(None, self._upload_image_sync, potential_path)
+                        if key:
+                            image_map[potential_path] = key
+                            logger.debug("Uploaded text image path: {} -> {}", potential_path, key)
+
+                # Build card elements with image support
+                elements = self._build_card_elements_with_images(content, image_map)
+                card = {"config": {"wide_screen_mode": True}, "elements": elements}
                 await loop.run_in_executor(
                     None, self._send_message_sync,
                     receive_id_type, msg.chat_id, "interactive", json.dumps(card, ensure_ascii=False),
