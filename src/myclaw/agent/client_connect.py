@@ -14,13 +14,14 @@ from claude_agent_sdk import (
     ClaudeSDKClient,
     PermissionMode,
     ResultMessage,
+    SdkPluginConfig,
     TextBlock,
     ThinkingBlock,
     ToolResultBlock,
     ToolUseBlock,
     UserMessage,
     create_sdk_mcp_server,
-    tool, SdkPluginConfig,
+    tool,
 )
 from loguru import logger
 
@@ -272,7 +273,10 @@ class ClawAgentConnect:
             ],
             permission_mode="bypassPermissions",
             plugins=[
-                SdkPluginConfig(type="local", path="/Users/dingwenjiang/workspace/codereview/warjiang/myclaw/plugins/memsearch")
+                # SdkPluginConfig(
+                #     type="local",
+                #     path="/path/to/memsearch"
+                # )
             ]
         )
 
