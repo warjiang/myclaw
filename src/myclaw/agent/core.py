@@ -7,12 +7,13 @@ from claude_agent_sdk import (
   TextBlock,
   ThinkingBlock,
   ToolResultBlock,
-  ToolUseBlock,
+  ToolUseBlock, PermissionMode,
 )
 from loguru import logger
 
 from myclaw.agent.skills import SkillManager
 from myclaw.config import Config
+from myclaw.config.schema import MCPServerConfig
 from myclaw.utils.paths import get_skill_dirs, get_workspace_dir
 
 
@@ -25,6 +26,57 @@ class ClawAgent:
     self.client: ClaudeSDKClient | None = None
     self.options: ClaudeAgentOptions | None = None
 
+  def _build_mcp_servers_config(self) -> dict[str, dict]:
+    """Build MCP servers configuration from config.
+
+    Returns:
+      Dictionary of server name to server configuration.
+      Supports both stdio and HTTP transport types.
+    """
+    mcp_servers: dict[str, dict] = {}
+
+    for name, server_config in self.config.tools.mcp_servers.items():
+      server_cfg = self._build_single_mcp_config(name, server_config)
+      if server_cfg:
+        mcp_servers[name] = server_cfg
+
+    return mcp_servers
+
+  def _build_single_mcp_config(
+    self, name: str, config: MCPServerConfig
+  ) -> dict | None:
+    """Build configuration for a single MCP server.
+
+    Args:
+      name: Server name (for logging).
+      config: MCP server configuration.
+
+    Returns:
+      Server configuration dictionary or None if invalid.
+    """
+    # Stdio transport: requires command
+    if config.command:
+      return {
+        "type": "stdio",
+        "command": config.command,
+        "args": config.args,
+        "env": config.env,
+      }
+
+    # HTTP transport: requires url
+    if config.url:
+      return {
+        "type": "http",
+        "url": config.url,
+        "headers": config.headers,
+      }
+
+    # Invalid configuration
+    logger.warning(
+      "MCP server '{}' has no command or url configured, skipping", name
+    )
+    return None
+
   def initialize(self):
     """Initialize the agent, load skills, and configure options."""
     self.skill_manager.load_skills()
@@ -33,21 +85,7 @@ class ClawAgent:
     system_prompt += self.skill_manager.get_system_prompt_addition()
 
     # Configure MCP servers from config
-    mcp_servers = {}
-    for name, server_config in self.config.tools.mcp_servers.items():
-      if server_config.disabled:
-        continue
-
-      if server_config.command:
-        mcp_servers[name] = {
-          "type": "stdio",
-          "command": server_config.command,
-          "args": server_config.args,
-          "env": server_config.env,
-        }
-      elif server_config.url:
-        # TODO: Support HTTP MCP
-        pass
+    mcp_servers = self._build_mcp_servers_config()
     claudecode_cfg = self.config.claudecode
     self.options = ClaudeAgentOptions(
       env={
@@ -68,6 +106,7 @@ class ClawAgent:
       mcp_servers=mcp_servers,
       # Add other options as needed
       allowed_tools=["Read", "Write", "Edit", "Bash"],
+      permission_mode="bypassPermissions",
     )
 
   async def process_message(self, message: str) -> AsyncGenerator[str, None]:
