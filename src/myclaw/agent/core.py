@@ -1,6 +1,14 @@
 from collections.abc import AsyncGenerator
 
-from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
+from claude_agent_sdk import (
+  AssistantMessage,
+  ClaudeAgentOptions,
+  ClaudeSDKClient,
+  TextBlock,
+  ThinkingBlock,
+  ToolResultBlock,
+  ToolUseBlock,
+)
 from loguru import logger
 
 from myclaw.agent.skills import SkillManager
@@ -75,26 +83,31 @@ class ClawAgent:
     # Receive response
     logger.debug("Waiting for response from agent...")
     async for msg in self.client.receive_response():
-      logger.debug("Received message type: {}, has content attr: {}, is string: {}",
-                   type(msg).__name__, hasattr(msg, "content"), isinstance(msg, str))
+      # logger.debug("Received message type: {}", type(msg).__name__)
 
-      # Extract text content from message
-      # Note: Actual structure depends on SDK version, assuming standard format
-      if hasattr(msg, "content"):
-        logger.debug("Processing message with content, content length: {}", len(msg.content) if hasattr(msg.content, "__len__") else "N/A")
+      # Extract text content from message using SDK types
+      if isinstance(msg, AssistantMessage):
+        logger.debug("Processing AssistantMessage with {} content blocks", len(msg.content))
         for idx, block in enumerate(msg.content):
-          logger.debug("Processing block {}: type={}, has text attr: {}",
-                       idx, type(block).__name__, hasattr(block, "text"))
-          if hasattr(block, "text"):
-            logger.debug("Received text block: {}", block.text[:100] + "..." if len(block.text) > 100 else block.text)
+          logger.debug("Processing block {}: type={}", idx, type(block).__name__)
+          if isinstance(block, TextBlock):
+            text_preview = block.text[:100] + "..." if len(block.text) > 100 else block.text
+            logger.debug("Received text block: {}", text_preview)
             yield block.text
+          elif isinstance(block, ThinkingBlock):
+            logger.debug("Received thinking block (skipped)")
+          elif isinstance(block, ToolUseBlock):
+            logger.debug("Received tool_use block: name={}", block.name)
+          elif isinstance(block, ToolResultBlock):
+            logger.debug("Received tool_result block: tool_use_id={}", block.tool_use_id)
           else:
-            logger.debug("Block {} has no text attribute, skipping", idx)
+            logger.debug("Unknown content block type: {}", type(block).__name__)
       elif isinstance(msg, str):
-        logger.debug("Received string message: {}", msg[:100] + "..." if len(msg) > 100 else msg)
+        text_preview = msg[:100] + "..." if len(msg) > 100 else msg
+        logger.debug("Received string message: {}", text_preview)
         yield msg
       else:
-        logger.debug("Unknown message type, skipping: {}", msg)
+        logger.debug("Unknown message type: {}", type(msg).__name__)
 
   async def close(self):
     if self.client:

@@ -311,7 +311,7 @@ class FeishuChannel(BaseChannel):
                 self.config.app_id,
                 self.config.app_secret,
                 event_handler=event_handler,
-                log_level=lark.LogLevel.DEBUG
+                log_level=lark.LogLevel.INFO
             )
 
             while self._running:
