@@ -413,22 +413,57 @@ class FeishuChannel(BaseChannel):
             "rows": [{f"c{i}": r[i] if i < len(r) else "" for i in range(len(headers))} for r in rows],
         }
 
+    def _convert_md_to_lark_md(self, content: str) -> str:
+        """Convert standard markdown to Feishu lark_md format.
+
+        Feishu lark_md uses different syntax for some markdown elements:
+        - **text** -> **text** (bold, same)
+        - *text* -> *text* (italic, same)
+        - `text` -> `text` (code, same)
+        - [text](url) -> [text](url) (link, same)
+        - > quote -> > quote (quote, same)
+        - - list -> - list (list, same)
+        - 1. list -> 1. list (ordered list, same)
+
+        But we need to ensure proper escaping and formatting for Feishu.
+        """
+        # For now, lark_md supports standard markdown syntax
+        # Just return as-is, but we can add transformations here if needed
+        return content
+
     def _build_card_elements(self, content: str) -> list[dict]:
-        """Split content into div/markdown + table elements for Feishu card."""
+        """Split content into div/markdown + table elements for Feishu card.
+
+        Uses lark_md format for better markdown compatibility with Feishu.
+        """
         elements, last_end = [], 0
         for m in self._TABLE_RE.finditer(content):
             before = content[last_end:m.start()]
             if before.strip():
                 elements.extend(self._split_headings(before))
-            elements.append(self._parse_md_table(m.group(1)) or {"tag": "markdown", "content": m.group(1)})
+            # Use lark_md for tables too
+            table_element = self._parse_md_table(m.group(1))
+            if table_element:
+                elements.append(table_element)
+            else:
+                elements.append({
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": m.group(1),
+                    },
+                })
             last_end = m.end()
         remaining = content[last_end:]
         if remaining.strip():
             elements.extend(self._split_headings(remaining))
-        return elements or [{"tag": "markdown", "content": content}]
+        return elements or [{"tag": "div", "text": {"tag": "lark_md", "content": content}}]
 
     def _split_headings(self, content: str) -> list[dict]:
-        """Split content by headings, converting headings to div elements."""
+        """Split content by headings, converting headings to div elements.
+
+        Uses lark_md format for better markdown compatibility with Feishu.
+        """
         protected = content
         code_blocks = []
         for m in self._CODE_BLOCK_RE.finditer(content):
@@ -440,7 +475,14 @@ class FeishuChannel(BaseChannel):
         for m in self._HEADING_RE.finditer(protected):
             before = protected[last_end:m.start()].strip()
             if before:
-                elements.append({"tag": "markdown", "content": before})
+                # Use lark_md instead of markdown for better compatibility
+                elements.append({
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": before,
+                    },
+                })
             text = m.group(2).strip()
             elements.append({
                 "tag": "div",
@@ -452,14 +494,21 @@ class FeishuChannel(BaseChannel):
             last_end = m.end()
         remaining = protected[last_end:].strip()
         if remaining:
-            elements.append({"tag": "markdown", "content": remaining})
+            # Use lark_md instead of markdown for better compatibility
+            elements.append({
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": remaining,
+                },
+            })
 
         for i, cb in enumerate(code_blocks):
             for el in elements:
-                if el.get("tag") == "markdown":
-                    el["content"] = el["content"].replace(f"\x00CODE{i}\x00", cb)
+                if el.get("tag") == "div" and el.get("text", {}).get("tag") == "lark_md":
+                    el["text"]["content"] = el["text"]["content"].replace(f"\x00CODE{i}\x00", cb)
 
-        return elements or [{"tag": "markdown", "content": content}]
+        return elements or [{"tag": "div", "text": {"tag": "lark_md", "content": content}}]
 
     def _build_card_elements_with_images(
         self, content: str, image_map: dict[str, str]

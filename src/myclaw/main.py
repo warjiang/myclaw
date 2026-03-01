@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from loguru import logger
 from rich.console import Console
 
-from myclaw.agent.core import ClawAgent
+from myclaw.agent.client_connect import ClawAgentConnect
 from myclaw.bus.events import OutboundMessage
 from myclaw.bus.queue import MessageBus
 from myclaw.channels.manager import ChannelManager
@@ -28,7 +28,7 @@ def start():
         console.print(f"[bold magenta]MyClaw[/bold magenta] Starting gateway on port {config.gateway.port}...")
 
         bus = MessageBus()
-        agent = ClawAgent(config)
+        agent = ClawAgentConnect(config)
         agent.initialize()
 
         channel_manager = ChannelManager(config, bus)
@@ -44,26 +44,37 @@ def start():
 
         # Agent processing loop
         async def process_inbound():
-            while True:
-                try:
-                    msg = await bus.consume_inbound()
-                    logger.info(f"Agent received message from {msg.sender_id} via {msg.channel}")
+            async with agent:
+                # Connect to Claude
+                await agent.connect()
+                console.print("[green]✓[/green] Connected to Claude")
 
-                    # Simple implementation without streaming for now
-                    full_response = ""
-                    async for chunk in agent.process_message(msg.content):
-                        full_response += chunk
+                while True:
+                    try:
+                        msg = await bus.consume_inbound()
+                        logger.info(f"Agent received message from {msg.sender_id} via {msg.channel}")
 
-                    outbound = OutboundMessage(
-                        channel=msg.channel,
-                        chat_id=msg.chat_id,
-                        content=full_response,
-                    )
-                    await bus.publish_outbound(outbound)
-                except asyncio.CancelledError:
-                    break
-                except Exception:
-                    logger.exception("Error processing inbound message")
+                        # Simple implementation without streaming for now
+                        full_response = ""
+                        async for chunk in agent.query(msg.content):
+                            full_response += chunk
+
+                        outbound = OutboundMessage(
+                            channel=msg.channel,
+                            chat_id=msg.chat_id,
+                            content=full_response or 'done',
+                        )
+                        await bus.publish_outbound(outbound)
+                        logger.info(
+                            "Task completed for message from {} via {}",
+                            msg.sender_id,
+                            msg.channel
+                        )
+                    except asyncio.CancelledError:
+                        logger.info("Agent task cancelled")
+                        break
+                    except Exception:
+                        logger.exception("Error processing inbound message")
 
         async def run():
             agent_task = asyncio.create_task(process_inbound())
@@ -77,10 +88,6 @@ def start():
             finally:
                 agent_task.cancel()
                 await channel_manager.stop_all()
-                try:
-                    await agent.close()
-                except Exception as e:
-                    logger.debug(f"Error closing agent: {e}")
 
         asyncio.run(run())
     except KeyboardInterrupt:
