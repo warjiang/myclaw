@@ -211,6 +211,9 @@ __marimo__/
 .agents
 .claude
 myclaw-workspace
+myclaw-memory
 config.json
 config.litellm.json
 config.deepseek.json
+src/examples/memsearch/memory
+src/examples/memsearch/milvus.db
