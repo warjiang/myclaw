@@ -3,10 +3,15 @@
 # Sourced by all hook scripts — not executed directly.
 
 set -euo pipefail
+LOG_FILE="/tmp/memsearch-debug.log"
+
+debug_log() {
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"
+}
 
 # Read stdin JSON into $INPUT
 INPUT="$(cat)"
-
+debug_log "INPUT: $INPUT"
 # Ensure common user bin paths are in PATH (hooks may run in a minimal env)
 for p in "$HOME/.local/bin" "$HOME/.cargo/bin" "$HOME/bin" "/usr/local/bin"; do
   [[ -d "$p" ]] && [[ ":$PATH:" != *":$p:"* ]] && export PATH="$p:$PATH"
