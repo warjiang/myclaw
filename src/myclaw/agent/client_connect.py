@@ -295,6 +295,7 @@ class ClawAgentConnect:
         "Write",
         "Edit",
         "Bash",
+        "Skill",
         "mcp__utilities__task_complete",
       ],
       permission_mode="bypassPermissions",
