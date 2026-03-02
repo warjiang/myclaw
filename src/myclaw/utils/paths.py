@@ -44,3 +44,13 @@ def get_workspace_dir() -> Path:
   workspace = project_root / "myclaw-workspace"
   workspace.mkdir(parents=True, exist_ok=True)
   return workspace
+
+
+def get_cwd_dir() -> Path:
+  """Get the cwd directory for the agent.
+
+  Returns:
+      Path to the cwd directory.
+  """
+  current_file = Path(__file__).resolve()
+  return current_file.parent.parent.parent.parent

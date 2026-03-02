@@ -1,3 +1,4 @@
+import os
 from collections.abc import AsyncGenerator
 
 from claude_agent_sdk import (
@@ -12,6 +13,7 @@ from claude_agent_sdk import (
 )
 from loguru import logger
 
+from myclaw.agent.hooks.memsearch import MemSearchHook
 from myclaw.agent.skills import SkillManager
 from myclaw.config import Config
 from myclaw.config.schema import MCPServerConfig
@@ -21,11 +23,10 @@ from myclaw.utils.paths import get_skill_dirs, get_workspace_dir
 class ClawAgent:
   def __init__(self, config: Config):
     self.config = config
-    self.skill_manager = SkillManager(
-      skill_dirs=get_skill_dirs()
-    )
+    self.skill_manager = SkillManager(skill_dirs=get_skill_dirs())
     self.client: ClaudeSDKClient | None = None
     self.options: ClaudeAgentOptions | None = None
+    self.memsearch_hook: MemSearchHook | None = None
 
   def _build_mcp_servers_config(self) -> dict[str, dict]:
     """Build MCP servers configuration from config.
@@ -43,9 +44,7 @@ class ClawAgent:
 
     return mcp_servers
 
-  def _build_single_mcp_config(
-    self, name: str, config: MCPServerConfig
-  ) -> dict | None:
+  def _build_single_mcp_config(self, name: str, config: MCPServerConfig) -> dict | None:
     """Build configuration for a single MCP server.
 
     Args:
@@ -73,9 +72,7 @@ class ClawAgent:
       }
 
     # Invalid configuration
-    logger.warning(
-      "MCP server '{}' has no command or url configured, skipping", name
-    )
+    logger.warning("MCP server '{}' has no command or url configured, skipping", name)
     return None
 
   def initialize(self):
@@ -116,15 +113,45 @@ class ClawAgent:
     # Configure MCP servers from config
     mcp_servers = self._build_mcp_servers_config()
     claudecode_cfg = self.config.claudecode
+
+    # Build hooks configuration
+    hooks = None
+    if self.config.memsearch.enabled:
+      from myclaw.agent.hooks.memsearch import MemSearchConfig
+
+      memsearch_cfg = self.config.memsearch
+      # fixme
+      os.environ["OPENAI_BASE_URL"] = claudecode_cfg.base_url
+      os.environ["OPENAI_API_KEY"] = claudecode_cfg.auth_token
+
+      ms_config = MemSearchConfig(
+        paths=memsearch_cfg.paths,
+        memory_dir=memsearch_cfg.memory_dir,
+        embedding_provider=memsearch_cfg.embedding_provider,
+        embedding_model=memsearch_cfg.embedding_model,
+        # milvus_uri=memsearch_cfg.milvus_uri,
+        # milvus_token=memsearch_cfg.milvus_token,
+        # collection=memsearch_cfg.collection,
+        # top_k=memsearch_cfg.top_k,
+        # max_chunk_size=memsearch_cfg.max_chunk_size,
+        # overlap_lines=memsearch_cfg.overlap_lines,
+        enable_auto_save=memsearch_cfg.enable_auto_save,
+        min_prompt_length=memsearch_cfg.min_prompt_length,
+      )
+
+      self.memsearch_hook = MemSearchHook(ms_config)
+      hooks = self.memsearch_hook.get_hook_matchers()
+      logger.info("MemSearch hook enabled with paths: {}", memsearch_cfg.paths)
+
     self.options = ClaudeAgentOptions(
       env={
-        "DISABLE_TELEMETRY": '1',
-        "DISABLE_ERROR_REPORTING": '1',
-        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": '1',
-        "MCP_TIMEOUT": '60000',
+        "DISABLE_TELEMETRY": "1",
+        "DISABLE_ERROR_REPORTING": "1",
+        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+        "MCP_TIMEOUT": "60000",
         "ANTHROPIC_AUTH_TOKEN": claudecode_cfg.auth_token,
         "ANTHROPIC_BASE_URL": claudecode_cfg.base_url,
-        "API_TIMEOUT_MS": '3000000',
+        "API_TIMEOUT_MS": "3000000",
         "ANTHROPIC_MODEL": claudecode_cfg.model,
         "ANTHROPIC_DEFAULT_HAIKU_MODEL": claudecode_cfg.haiku_model,
         "ANTHROPIC_DEFAULT_OPUS_MODEL": claudecode_cfg.opus_model,
@@ -133,6 +160,7 @@ class ClawAgent:
       cwd=str(get_workspace_dir()),
       system_prompt=system_prompt,
       mcp_servers=mcp_servers,
+      hooks=hooks,
       # Add other options as needed
       allowed_tools=["Read", "Write", "Edit", "Bash"],
       permission_mode="bypassPermissions",
@@ -145,7 +173,9 @@ class ClawAgent:
       await self.client.__aenter__()  # Manually enter context if keeping client alive
 
     # Send message
-    logger.debug("Sending message to agent: {}", message[:100] + "..." if len(message) > 100 else message)
+    logger.debug(
+      "Sending message to agent: {}", message[:100] + "..." if len(message) > 100 else message
+    )
     await self.client.query(message)
 
     # Receive response
