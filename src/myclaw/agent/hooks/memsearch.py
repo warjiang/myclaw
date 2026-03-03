@@ -131,11 +131,11 @@ class MemSearchHook:
           paths=paths,
           embedding_provider=self.config.embedding_provider,
           embedding_model=self.config.embedding_model,
-          milvus_uri=self.config.milvus_uri,
-          milvus_token=self.config.milvus_token,
-          collection=self.config.collection,
-          max_chunk_size=self.config.max_chunk_size,
-          overlap_lines=self.config.overlap_lines,
+          # milvus_uri=self.config.milvus_uri,
+          # milvus_token=self.config.milvus_token,
+          # collection=self.config.collection,
+          # max_chunk_size=self.config.max_chunk_size,
+          # overlap_lines=self.config.overlap_lines,
         )
 
         logger.info("MemSearch: Starting initial indexing...")
